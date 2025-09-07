@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project-Bot Free API Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Neutrals -->
+    <!-- Application Structure Plan: The application is designed as an interactive dashboard. The core is a filterable gallery of API "cards," allowing users to discover tools efficiently. This is superior to a static list as it empowers users to narrow down options based on their specific needs (e.g., finding only 'AI' APIs). The structure includes a header for context, a control bar for filtering (by category and text search), an interactive summary chart for a high-level overview, and the main content grid. This task-oriented design prioritizes user flow and rapid information discovery. -->
+    <!-- Visualization & Content Choices: 
+        1. API Directory -> Goal: Organize & Inform -> Viz/Method: Responsive Card Grid (HTML/Tailwind) -> Interaction: Users can visually scan APIs. A 'Visit API' button provides a direct link. -> Justification: Cards provide a structured, digestible format for each API's key information. -> Library: Tailwind for styling.
+        2. API Categories -> Goal: Inform & Compare -> Viz/Method: Bar Chart (Canvas) -> Interaction: Clicking a bar on the chart filters the main API grid to show only APIs of that category. -> Justification: The chart gives an immediate visual breakdown of the available APIs and doubles as an intuitive, graphical filtering mechanism. -> Library: Chart.js.
+        3. Search & Filter -> Goal: Organize & Refine -> Viz/Method: Interactive UI Controls (Buttons, Search Input) -> Interaction: Clicking category buttons or typing in the search box dynamically updates the displayed API cards in real-time. -> Justification: These are the primary tools for users to control the information, making the large dataset manageable and useful. -> Library: Vanilla JavaScript. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .category-button.active {
+            background-color: #0891b2;
+            color: white;
+            font-weight: 600;
+        }
+        #api-grid {
+            transition: opacity 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-bold text-slate-900">Project Bot -Free API Toolkit</h1>
+            <p class="mt-3 text-lg text-slate-600 max-w-3xl mx-auto">An  directory of free-to-start APIs for building our Project-Bot</p>
+        </header>
+
+        <main>
+            <div id="controls" class="mb-10 p-6 bg-white rounded-xl shadow-sm border border-slate-200">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="md:col-span-2">
+                        <label for="search-input" class="block text-sm font-medium text-slate-700 mb-2">Filter by Category</label>
+                        <div id="category-filters" class="flex flex-wrap gap-2">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="search-input" class="block text-sm font-medium text-slate-700 mb-2">Search by Name or Keyword</label>
+                        <div class="relative">
+                            <input type="text" id="search-input" placeholder="e.g., 'Weather', 'Images'..." class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition">
+                            <span class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" /></svg>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <section id="overview" class="mb-12">
+                 <h2 class="text-2xl font-bold text-center mb-2 text-slate-900">API Category Overview</h2>
+                 <p class="text-center text-slate-600 mb-6">Click on a bar to filter the list below.</p>
+                <div class="chart-container bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+                    <canvas id="apiChart"></canvas>
+                </div>
+            </section>
+
+            <section id="api-list">
+                <h2 class="text-2xl font-bold text-slate-900 mb-6">Available APIs (<span id="api-count">0</span>)</h2>
+                <div id="api-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                </div>
+                <p id="no-results" class="hidden text-center text-slate-500 py-12">No APIs found matching your criteria.</p>
+            </section>
+        </main>
+    </div>
+
+    <template id="api-card-template">
+        <div class="api-card bg-white rounded-xl shadow-md border border-slate-200 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col overflow-hidden">
+            <div class="p-5 flex-grow">
+                <div class="flex justify-between items-start mb-3">
+                    <h3 class="text-xl font-bold text-slate-900">
+                        <a href="#" class="api-link" target="_blank" rel="noopener noreferrer">API Name</a>
+                    </h3>
+                    <span class="api-category text-xs font-semibold px-2 py-1 rounded-full">Category</span>
+                </div>
+                <p class="api-description text-slate-600 text-sm mb-4 h-20">Description goes here.</p>
+                <div class="space-y-2 text-sm">
+                    <div class="flex items-center">
+                        <span class="w-5 h-5 mr-2 text-cyan-600">🔑</span>
+                        <span class="font-medium text-slate-700">Auth:</span>
+                        <span class="api-auth ml-2 text-slate-600">API Key</span>
+                    </div>
+                    <div class="flex items-center">
+                        <span class="w-5 h-5 mr-2 text-cyan-600">⚡</span>
+                        <span class="font-medium text-slate-700">Free Tier:</span>
+                        <span class="api-free-tier ml-2 text-slate-600">Generous</span>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-200">
+                <a href="#" class="api-link w-full inline-block text-center bg-cyan-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-cyan-700 transition-colors" target="_blank" rel="noopener noreferrer">Visit API</a>
+            </div>
+        </div>
+    </template>
+    
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const apiData = [
+                {
+                    name: 'OpenAI (GPT-3.5)',
+                    category: 'AI',
+                    description: 'Access powerful language models for text generation, summarization, translation, and more.',
+                    auth: 'API Key',
+                    freeTier: 'Free credits on signup, then pay-as-you-go.',
+                    link: 'https://platform.openai.com/'
+                },
+                {
+                    name: 'Hugging Face Inference',
+                    category: 'AI',
+                    description: 'Access thousands of pre-trained models for Natural Language Processing, Computer Vision, and Audio.',
+                    auth: 'API Key',
+                    freeTier: 'Generous free tier for inference tasks.',
+                    link: 'https://huggingface.co/inference-api'
+                },
+                {
+                    name: 'Google Gemini',
+                    category: 'AI',
+                    description: 'Google\'s powerful multimodal AI model, available for developers with a generous free tier for experimentation and small projects.',
+                    auth: 'API Key',
+                    freeTier: 'Free access with rate limits (e.g., 60 queries per minute).',
+                    link: 'https://ai.google.dev/'
+                },
+                {
+                    name: 'OpenWeatherMap',
+                    category: 'Data',
+                    description: 'Provides current weather data, forecasts, and historical data for any location on Earth.',
+                    auth: 'API Key',
+                    freeTier: '60 calls/minute, 1M calls/month.',
+                    link: 'https://openweathermap.org/api'
+                },
+                {
+                    name: 'The Movie Database (TMDb)',
+                    category: 'Data',
+                    description: 'A comprehensive database of movies, TV shows, and celebrity content.',
+                    auth: 'API Key',
+                    freeTier: 'Completely free for personal and commercial use with attribution.',
+                    link: 'https://www.themoviedb.org/documentation/api'
+                },
+                {
+                    name: 'Wikipedia API',
+                    category: 'Education',
+                    description: 'Access the content of Wikipedia, including articles, images, and metadata. Ideal for educational projects and research.',
+                    auth: 'None',
+                    freeTier: 'Free and open, with generous rate limits for anonymous users.',
+                    link: 'https://www.mediawiki.org/wiki/API:Main_page'
+                },
+                {
+                    name: 'NASA APIs',
+                    category: 'Education',
+                    description: 'Explore a wealth of NASA data, including the Astronomy Picture of the Day, Mars Rover photos, and more.',
+                    auth: 'API Key (demo key available)',
+                    freeTier: 'Generous rate limits with a free API key.',
+                    link: 'https://api.nasa.gov/'
+                },
+                {
+                    name: 'Merriam-Webster Dictionary',
+                    category: 'Education',
+                    description: 'Access extensive dictionary and thesaurus content for building educational apps or language tools.',
+                    auth: 'API Key',
+                    freeTier: 'Free for non-commercial use with limits on requests.',
+                    link: 'https://dictionaryapi.com/'
+                },
+                {
+                    name: 'Giphy API',
+                    category: 'Media',
+                    description: 'Integrate the world\'s largest library of animated GIFs and stickers into your applications.',
+                    auth: 'API Key',
+                    freeTier: 'Generous free tier for most applications.',
+                    link: 'https://developers.giphy.com/'
+                },
+                {
+                    name: 'Pixabay API',
+                    category: 'Media',
+                    description: 'Access a vast library of over 2 million high-quality, royalty-free stock images, videos, and music.',
+                    auth: 'API Key',
+                    freeTier: 'Completely free, with rate limits.',
+                    link: 'https://pixabay.com/api/docs/'
+                },
+                {
+                    name: 'JSONPlaceholder',
+                    category: 'Productivity',
+                    description: 'A fake online REST API for testing and prototyping. Perfect for tutorials and building client-side apps.',
+                    auth: 'None',
+                    freeTier: 'Completely free and unlimited.',
+                    link: 'https://jsonplaceholder.typicode.com/'
+                },
+                {
+                    name: 'GitHub REST API',
+                    category: 'Productivity',
+                    description: 'Interact with GitHub repositories, users, issues, and more. Essential for developer productivity tools.',
+                    auth: 'OAuth / API Key',
+                    freeTier: 'Generous unauthenticated rate limits; higher with authentication.',
+                    link: 'https://docs.github.com/en/rest'
+                },
+                {
+                    name: 'Numbers API',
+                    category: 'Data',
+                    description: 'An API for interesting facts about numbers and dates. Fun for educational or novelty projects.',
+                    auth: 'None',
+                    freeTier: 'Completely free and unlimited.',
+                    link: 'http://numbersapi.com/'
+                },
+                {
+                    name: 'Stripe API',
+                    category: 'Finance',
+                    description: 'Build payment processing into your applications. Test mode is free and fully featured.',
+                    auth: 'API Key',
+                    freeTier: 'Unlimited free use in test mode.',
+                    link: 'https://stripe.com/docs/api'
+                },
+                {
+                    name: 'Mapbox API',
+                    category: 'Data',
+                    description: 'Provides powerful mapping, navigation, and location search services for web and mobile apps.',
+                    auth: 'Access Token',
+                    freeTier: 'Generous monthly free tier for maps, styles, and geocoding.',
+                    link: 'https://docs.mapbox.com/api/'
+                }
+            ];
+
+            const apiGrid = document.getElementById('api-grid');
+            const cardTemplate = document.getElementById('api-card-template');
+            const apiCountEl = document.getElementById('api-count');
+            const searchInput = document.getElementById('search-input');
+            const categoryFiltersContainer = document.getElementById('category-filters');
+            const noResultsEl = document.getElementById('no-results');
+            const chartCanvas = document.getElementById('apiChart');
+            
+            let apiChart = null;
+            let currentCategory = 'All';
+
+            const categoryColors = {
+                'AI': 'bg-purple-100 text-purple-800',
+                'Data': 'bg-blue-100 text-blue-800',
+                'Education': 'bg-green-100 text-green-800',
+                'Media': 'bg-orange-100 text-orange-800',
+                'Productivity': 'bg-yellow-100 text-yellow-800',
+                'Finance': 'bg-pink-100 text-pink-800'
+            };
+            
+            const chartColors = {
+                'AI': 'rgba(168, 85, 247, 0.7)',
+                'Data': 'rgba(59, 130, 246, 0.7)',
+                'Education': 'rgba(34, 197, 94, 0.7)',
+                'Media': 'rgba(249, 115, 22, 0.7)',
+                'Productivity': 'rgba(234, 179, 8, 0.7)',
+                'Finance': 'rgba(236, 72, 153, 0.7)'
+            };
+            
+            const chartHoverColors = {
+                'AI': 'rgba(168, 85, 247, 1)',
+                'Data': 'rgba(59, 130, 246, 1)',
+                'Education': 'rgba(34, 197, 94, 1)',
+                'Media': 'rgba(249, 115, 22, 1)',
+                'Productivity': 'rgba(234, 179, 8, 1)',
+                'Finance': 'rgba(236, 72, 153, 1)'
+            };
+
+
+            function setupFilters() {
+                const categories = ['All', ...new Set(apiData.map(api => api.category))];
+                categoryFiltersContainer.innerHTML = '';
+                categories.forEach(category => {
+                    const button = document.createElement('button');
+                    button.textContent = category;
+                    button.dataset.category = category;
+                    button.className = 'category-button px-4 py-2 text-sm font-medium rounded-lg transition-colors border border-slate-300 hover:bg-slate-100';
+                    if (category === 'All') button.classList.add('active');
+                    categoryFiltersContainer.appendChild(button);
+                });
+            }
+
+            function renderApis(filteredApis) {
+                apiGrid.style.opacity = 0;
+                setTimeout(() => {
+                    apiGrid.innerHTML = '';
+                    apiCountEl.textContent = filteredApis.length;
+                    
+                    if (filteredApis.length === 0) {
+                        noResultsEl.classList.remove('hidden');
+                    } else {
+                        noResultsEl.classList.add('hidden');
+                    }
+
+                    filteredApis.forEach(api => {
+                        const card = cardTemplate.content.cloneNode(true);
+                        card.querySelector('h3').textContent = api.name;
+                        card.querySelector('.api-category').textContent = api.category;
+                        card.querySelector('.api-category').className += ` ${categoryColors[api.category] || 'bg-slate-100 text-slate-800'}`;
+                        card.querySelector('.api-description').textContent = api.description;
+                        card.querySelector('.api-auth').textContent = api.auth;
+                        card.querySelector('.api-free-tier').textContent = api.freeTier;
+                        card.querySelectorAll('.api-link').forEach(link => link.href = api.link);
+                        apiGrid.appendChild(card);
+                    });
+                     apiGrid.style.opacity = 1;
+                }, 150);
+            }
+
+            function filterAndRender() {
+                const searchTerm = searchInput.value.toLowerCase();
+                
+                const filteredApis = apiData.filter(api => {
+                    const matchesCategory = currentCategory === 'All' || api.category === currentCategory;
+                    const matchesSearch = api.name.toLowerCase().includes(searchTerm) || api.description.toLowerCase().includes(searchTerm) || api.category.toLowerCase().includes(searchTerm);
+                    return matchesCategory && matchesSearch;
+                });
+                
+                renderApis(filteredApis);
+            }
+            
+            function setupChart() {
+                const categoryCounts = apiData.reduce((acc, api) => {
+                    acc[api.category] = (acc[api.category] || 0) + 1;
+                    return acc;
+                }, {});
+
+                const labels = Object.keys(categoryCounts);
+                const data = Object.values(categoryCounts);
+                const backgroundColors = labels.map(label => chartColors[label] || 'rgba(100, 116, 139, 0.7)');
+                const hoverBackgroundColors = labels.map(label => chartHoverColors[label] || 'rgba(100, 116, 139, 1)');
+
+                const ctx = chartCanvas.getContext('2d');
+                apiChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '# of APIs',
+                            data: data,
+                            backgroundColor: backgroundColors,
+                            borderColor: hoverBackgroundColors,
+                            borderWidth: 1,
+                            hoverBackgroundColor: hoverBackgroundColors
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                             tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y;
+                                        }
+                                        return label;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        },
+                        onClick: (event, elements) => {
+                            if (elements.length > 0) {
+                                const clickedIndex = elements[0].index;
+                                const category = labels[clickedIndex];
+                                updateActiveCategory(category);
+                            }
+                        }
+                    }
+                });
+            }
+            
+            function updateActiveCategory(category) {
+                currentCategory = category;
+                document.querySelectorAll('.category-button').forEach(btn => {
+                    if (btn.dataset.category === category) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+                filterAndRender();
+            }
+
+            categoryFiltersContainer.addEventListener('click', (e) => {
+                if (e.target.matches('.category-button')) {
+                    const category = e.target.dataset.category;
+                    updateActiveCategory(category);
+                }
+            });
+
+            searchInput.addEventListener('input', filterAndRender);
+
+            setupFilters();
+            renderApis(apiData);
+            setupChart();
+        });
+    </script>
+</body>
+</html>
